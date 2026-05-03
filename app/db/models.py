@@ -31,10 +31,14 @@ class Session(Base):
     # SessionState serialized as JSON — see app/srop/state.py
     state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
     user: Mapped["User"] = relationship(back_populates="sessions")
-    messages: Mapped[list["Message"]] = relationship(back_populates="session", order_by="Message.created_at")
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="session", order_by="Message.created_at"
+    )
 
 
 class Message(Base):

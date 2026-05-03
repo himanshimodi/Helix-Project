@@ -1,10 +1,15 @@
-"""
-GET /v1/traces/{trace_id} — return the structured trace for one pipeline turn.
-"""
+"""GET /v1/traces/{trace_id} — return the structured trace for one pipeline turn."""
+from __future__ import annotations
+
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.errors import TraceNotFoundError
+from app.db.models import AgentTrace
 from app.db.session import get_db
 
 router = APIRouter(tags=["traces"])
@@ -12,8 +17,8 @@ router = APIRouter(tags=["traces"])
 
 class ToolCallRecord(BaseModel):
     tool_name: str
-    args: dict
-    result: dict | str | None
+    args: dict[str, Any]
+    result: Any
 
 
 class TraceResponse(BaseModel):
@@ -31,5 +36,27 @@ async def get_trace(
     db: AsyncSession = Depends(get_db),
 ) -> TraceResponse:
     """Return trace for one turn. 404 if not found."""
-    # TODO: query agent_traces table, return or 404
-    raise NotImplementedError
+    result = await db.execute(
+        select(AgentTrace).where(AgentTrace.trace_id == trace_id)
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise TraceNotFoundError(f"Trace {trace_id!r} not found.")
+
+    tool_calls = [
+        ToolCallRecord(
+            tool_name=str(tc.get("tool_name", "")),
+            args=dict(tc.get("args", {})),
+            result=tc.get("result"),
+        )
+        for tc in (row.tool_calls or [])
+    ]
+
+    return TraceResponse(
+        trace_id=row.trace_id,
+        session_id=row.session_id,
+        routed_to=row.routed_to,
+        tool_calls=tool_calls,
+        retrieved_chunk_ids=list(row.retrieved_chunk_ids or []),
+        latency_ms=row.latency_ms,
+    )

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wait)",
+      "Bash(python -c ' *)",
+      "Bash(python -m pytest tests/ -q)"
+    ]
+  }
+}

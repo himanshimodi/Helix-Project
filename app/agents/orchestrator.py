@@ -1,42 +1,48 @@
 """
 SROP Root Orchestrator — Google ADK agent.
 
-Routes every user turn to KnowledgeAgent or AccountAgent via ADK's AgentTool.
-This means the LLM decides which tool to call — you do not parse its output.
+Routes every user turn to KnowledgeAgent or AccountAgent via ADK AgentTool.
+Routing is performed by LLM tool-selection — not string parsing.
 
-Intent → sub-agent:
-  knowledge:  "how do I X", "what is X", docs questions
-  account:    "show my builds", "my account status", usage questions
-  smalltalk:  greetings, thanks — root agent handles inline (no tool call)
-
-See docs/google-adk-guide.md for AgentTool pattern and event extraction.
+The instruction uses {var} placeholders that ADK resolves from session.state
+at runtime, so the root agent is created once and reused across all turns.
+State variables injected per turn: user_id, plan_tier, last_agent, turn_count.
 """
-# from google.adk.agents import LlmAgent
-# from google.adk.tools.agent_tool import AgentTool
-# from app.agents.knowledge import knowledge_agent
-# from app.agents.account import account_agent
-# from app.settings import settings
+from __future__ import annotations
 
-ROOT_INSTRUCTION = """
-You are the Helix Support Concierge — a routing agent.
-Call the correct specialist tool based on the user's intent.
+from google.adk.agents import LlmAgent
+from google.adk.tools.agent_tool import AgentTool
 
-Intent → tool:
-- HOW to do something, WHAT something is, docs/feature questions → knowledge_agent
-- Their account, builds, status, usage → account_agent
-- Greetings or off-topic → respond directly, no tool call
+from app.agents.account import account_agent
+from app.agents.knowledge import knowledge_agent
+from app.settings import settings
 
-Always call a tool when intent matches. Never answer knowledge or account questions yourself.
-User context will be in the system message — use it.
+ROOT_INSTRUCTION = """You are the Helix Support Concierge — a routing agent.
+
+Current user context:
+- user_id: {user_id}
+- plan_tier: {plan_tier}
+- last_agent_used: {last_agent?}
+- conversation_turn: {turn_count}
+
+Route every user message to the correct specialist tool:
+- HOW to do something, WHAT a feature is, docs/config questions → knowledge_agent
+- Their builds, account status, plan usage, pipeline results → account_agent
+- Greetings, thanks, or clearly off-topic → respond directly (no tool call)
+
+Rules:
+1. Always call a tool when intent matches knowledge or account.
+2. Never answer knowledge or account questions yourself — delegate.
+3. Pass the user_id from context when the account tool needs it.
+4. If unsure, prefer knowledge_agent.
 """
 
-# TODO: wire up sub-agents and root orchestrator
-# knowledge_tool = AgentTool(agent=knowledge_agent)
-# account_tool   = AgentTool(agent=account_agent)
-
-# root_agent = LlmAgent(
-#     name="srop_root",
-#     model=settings.adk_model,
-#     instruction=ROOT_INSTRUCTION,
-#     tools=[knowledge_tool, account_tool],
-# )
+root_agent = LlmAgent(
+    name="srop_root",
+    model=settings.adk_model,
+    instruction=ROOT_INSTRUCTION,
+    tools=[
+        AgentTool(agent=knowledge_agent),
+        AgentTool(agent=account_agent),
+    ],
+)
